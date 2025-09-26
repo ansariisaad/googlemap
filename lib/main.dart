@@ -13,9 +13,13 @@ void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     print("Background task executed: $task");
 
-    // Your background location tracking logic here
-    final locationService = LocationService();
-    await locationService.getCurrentLocation();
+    try {
+      // Your background location tracking logic here
+      final locationService = LocationService();
+      await locationService.getCurrentLocation();
+    } catch (e) {
+      print("Error in background task: $e");
+    }
 
     return Future.value(true);
   });
@@ -41,11 +45,15 @@ void onStart(ServiceInstance service) async {
   });
 
   service.on('setAsForeground').listen((event) {
-    // service.setAsForegroundService();
+    if (service is AndroidServiceInstance) {
+      service.setAsForegroundService;
+    }
   });
 
   service.on('setAsBackground').listen((event) {
-    // service.setAsBackgroundService();
+    if (service is AndroidServiceInstance) {
+      service.setAsForegroundService;
+    }
   });
 
   // Periodic location updates
@@ -69,17 +77,20 @@ void onStart(ServiceInstance service) async {
         await flutterLocalNotificationsPlugin.show(
           888,
           'Location Tracking',
-          'App is tracking location in background',
+          'App is tracking location in background - ${DateTime.now().toString().substring(11, 16)}',
           platformChannelSpecifics,
         );
       }
     }
 
     // Update location
-    final locationService = LocationService();
-    await locationService.getCurrentLocation();
-
-    print('Background service: ${DateTime.now()}');
+    try {
+      final locationService = LocationService();
+      await locationService.getCurrentLocation();
+      print('Background service location update: ${DateTime.now()}');
+    } catch (e) {
+      print('Background service error: $e');
+    }
   });
 }
 

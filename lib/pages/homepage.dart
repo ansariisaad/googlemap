@@ -1,11 +1,12 @@
+// pages/homepage.dart
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:googlemap/services/locatin_srv.dart';
 import 'package:googlemap/services/route_calculation.dart';
 import 'package:location/location.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:permission_handler/permission_handler.dart' as perm;
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:workmanager/workmanager.dart';
+import '../services/locatin_srv.dart'; 
 
 class Homepage extends StatefulWidget {
   const Homepage({super.key});
@@ -40,15 +41,45 @@ class _HomepageState extends State<Homepage> {
   }
 
   Future<void> _requestPermissions() async {
-    // Request location permission
-    var locationPermission = await Permission.location.request();
-    var locationAlwaysPermission = await Permission.locationAlways.request();
+    // Request multiple permissions
+    Map<perm.Permission, perm.PermissionStatus> permissions = await [
+      perm.Permission.location,
+      perm.Permission.locationAlways,
+      perm.Permission.notification,
+    ].request();
 
-    if (locationPermission.isDenied || locationAlwaysPermission.isDenied) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location permission is required')),
-      );
+    if (permissions[perm.Permission.location]!.isDenied ||
+        permissions[perm.Permission.locationAlways]!.isDenied) {
+      _showPermissionDialog();
     }
+  }
+
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Location Permission Required'),
+          content: const Text(
+            'This app needs location permission to track your location in the background. '
+            'Please grant "Allow all the time" permission for the app to work properly.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                perm.openAppSettings();
+              },
+              child: const Text('Open Settings'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Later'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _getCurrentLocation() async {
@@ -82,6 +113,9 @@ class _HomepageState extends State<Homepage> {
       }
     } catch (e) {
       print('Error getting location: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error getting location: $e')));
     }
   }
 
@@ -93,27 +127,43 @@ class _HomepageState extends State<Homepage> {
   void _startBackgroundService() async {
     final service = FlutterBackgroundService();
 
-    if (await service.isRunning()) {
-      service.invoke("setAsForeground");
-    } else {
-      await Permission.notification.request();
-      await service.startService();
+    try {
+      if (await service.isRunning()) {
+        service.invoke("setAsForeground");
+      } else {
+        await perm.Permission.notification.request();
+        service.startService();
+      }
+
+      // Register periodic task with WorkManager
+      await Workmanager().registerPeriodicTask(
+        "location_task",
+        "locationUpdate",
+        frequency: const Duration(minutes: 15),
+        constraints: Constraints(
+          networkType: NetworkType.notRequired,
+          requiresBatteryNotLow: false,
+          requiresCharging: false,
+          requiresDeviceIdle: false,
+          requiresStorageNotLow: false,
+        ),
+      );
+
+      setState(() {
+        isServiceRunning = true;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Background service started'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error starting service: $e')));
     }
-
-    // Register periodic task with WorkManager
-    await Workmanager().registerPeriodicTask(
-      "location_task",
-      "locationUpdate",
-      frequency: const Duration(minutes: 15),
-    );
-
-    setState(() {
-      isServiceRunning = true;
-    });
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Background service started')));
   }
 
   void _stopBackgroundService() async {
@@ -126,9 +176,12 @@ class _HomepageState extends State<Homepage> {
       isServiceRunning = false;
     });
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Background service stopped')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Background service stopped'),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
 
   void _onMapTap(LatLng position) async {
@@ -204,11 +257,20 @@ class _HomepageState extends State<Homepage> {
 
   Future<void> _calculateRoute() async {
     if (startPoint != null && endPoint != null) {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
       try {
         final routeData = await routeCalculator.calculateRoute(
           startPoint!,
           endPoint!,
         );
+
+        Navigator.of(context).pop(); // Remove loading indicator
 
         setState(() {
           distance = "${(routeData['distance'] / 1000).toStringAsFixed(2)} km";
@@ -251,6 +313,7 @@ class _HomepageState extends State<Homepage> {
           CameraUpdate.newLatLngBounds(bounds, 100.0),
         );
       } catch (e) {
+        Navigator.of(context).pop(); // Remove loading indicator
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error calculating route: $e')));
@@ -268,6 +331,12 @@ class _HomepageState extends State<Homepage> {
           IconButton(
             icon: const Icon(Icons.my_location),
             onPressed: _getCurrentLocation,
+            tooltip: 'Get Current Location',
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => perm.openAppSettings(),
+            tooltip: 'App Settings',
           ),
         ],
       ),
@@ -275,6 +344,16 @@ class _HomepageState extends State<Homepage> {
         children: [
           Container(
             padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
             child: Column(
               children: [
                 Row(
@@ -289,13 +368,14 @@ class _HomepageState extends State<Homepage> {
                           color: Colors.white,
                         ),
                         label: Text(
-                          isServiceRunning ? 'Stop Service' : 'Start Service',
+                          isServiceRunning ? 'Stop Tracking' : 'Start Tracking',
                           style: const TextStyle(color: Colors.white),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isServiceRunning
                               ? Colors.red
                               : Colors.green,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                       ),
                     ),
@@ -306,7 +386,7 @@ class _HomepageState extends State<Homepage> {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: isServiceRunning ? Colors.green : Colors.red,
+                        color: isServiceRunning ? Colors.green : Colors.grey,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -323,19 +403,38 @@ class _HomepageState extends State<Homepage> {
                 if (distance.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Distance: $distance',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.route, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Distance: $distance',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Tap on map to set start point, tap again to set end point',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                Text(
+                  startPoint == null
+                      ? 'Tap on map to set start point'
+                      : endPoint == null
+                      ? 'Tap again to set end point and calculate route'
+                      : 'Tap again to start a new route',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -361,42 +460,66 @@ class _HomepageState extends State<Homepage> {
                     myLocationButtonEnabled: false,
                     compassEnabled: true,
                     mapType: MapType.normal,
+                    trafficEnabled: false,
+                    buildingsEnabled: true,
                   )
-                : const Center(child: CircularProgressIndicator()),
+                : const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Getting your location...'),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: "refresh",
+            mini: true,
+            onPressed: _checkServiceStatus,
+            child: const Icon(Icons.refresh),
+            tooltip: 'Refresh Service Status',
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            heroTag: "clear",
+            onPressed: () {
+              setState(() {
+                markers.clear();
+                polylines.clear();
+                startPoint = null;
+                endPoint = null;
+                distance = "";
+              });
 
-      // floatingActionButton: FloatingActionButton(
-      //   onPressed: () {
-      //     setState(() {
-      //       markers.clear();
-      //       polylines.clear();
-      //       startPoint = null;
-      //       endPoint = null;
-      //       distance = "";
-      //     });
-
-      //     // Add current location marker back
-      //     if (currentLocation != null) {
-      //       markers.add(
-      //         Marker(
-      //           markerId: const MarkerId('current_location'),
-      //           position: LatLng(
-      //             currentLocation!.latitude!,
-      //             currentLocation!.longitude!,
-      //           ),
-      //           infoWindow: const InfoWindow(title: 'Current Location'),
-      //           icon: BitmapDescriptor.defaultMarkerWithHue(
-      //             BitmapDescriptor.hueBlue,
-      //           ),
-      //         ),
-      //       );
-      //     }
-      //   },
-      //   child: const Icon(Icons.clear),
-      //   tooltip: 'Clear Route',
-      // ),
+              // Add current location marker back
+              if (currentLocation != null) {
+                markers.add(
+                  Marker(
+                    markerId: const MarkerId('current_location'),
+                    position: LatLng(
+                      currentLocation!.latitude!,
+                      currentLocation!.longitude!,
+                    ),
+                    infoWindow: const InfoWindow(title: 'Current Location'),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueBlue,
+                    ),
+                  ),
+                );
+              }
+            },
+            child: const Icon(Icons.clear),
+            tooltip: 'Clear Route',
+          ),
+        ],
+      ),
     );
   }
 }
