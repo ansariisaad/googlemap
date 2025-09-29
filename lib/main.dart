@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:googlemap/pages/homepage.dart';
+import 'package:googlemap/pages/splashpage.dart';
 import 'package:googlemap/services/locatin_srv.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -160,7 +161,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       debugShowCheckedModeBanner: false,
-      home: const Homepage(),
+      home: const Splashpage(),
     );
   }
 }
