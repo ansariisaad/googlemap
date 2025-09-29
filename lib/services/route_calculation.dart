@@ -6,7 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 class RouteCalculator {
   // Your OpenRouteService API key
   static const String _apiKey =
-      'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImU3YjNjODhiMDI2NDQ0NjBhNzNmMzdlYzYzMWM0MmY0IiwiaCI6Im11cm11cjY0In0=';
+      'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjcyYTdmN2EwODgxMDY1NTAxODgwMjExYWI5MzJmMjMyYjQ3ZDVlZDRkZmJiMzhlMDc3NzllZDg2IiwiaCI6Im11cm11cjY0In0=';
   static const String _baseUrl =
       'https://api.openrouteservice.org/v2/directions/driving-car';
 

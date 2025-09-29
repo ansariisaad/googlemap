@@ -2,8 +2,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:googlemap/pages/homepage.dart';
+import 'package:flutter_background_service/flutter_background_service.dart'; 
 import 'package:googlemap/pages/splashpage.dart';
 import 'package:googlemap/services/locatin_srv.dart';
 import 'package:workmanager/workmanager.dart';
